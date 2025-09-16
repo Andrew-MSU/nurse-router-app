@@ -3,6 +3,7 @@ import folium
 from streamlit_folium import st_folium
 import openrouteservice
 from openrouteservice import convert
+import pandas as pd  # Added for clean table display
 
 # Placeholder data for Montana (lat, long)
 nurses = {
@@ -109,8 +110,10 @@ if st.button('Find Closest Nurse and Generate Route'):
         st.metric(label="Driving Distance", value=f"{closest['Distance (miles)']} miles")
         st.metric(label="Estimated Drive Time", value=closest['Drive Time'])
         
-        # Show ranked options table (all, since 3 total)
+        # Show ranked options table (only name, distance, time)
         st.subheader("Ranked Nurse Options")
-        st.table(results_sorted)
+        df = pd.DataFrame(results_sorted)
+        df = df[['Nurse', 'Distance (miles)', 'Drive Time']]  # Select only desired columns
+        st.table(df)
     else:
         st.error("No routes could be calculated. Check API key or locations.")
