@@ -54,8 +54,8 @@ if st.button('Generate Route'):
         popup='Route to Patient'
     ).add_to(m)
     
-    # Display map in Streamlit
-    st_folium(m, width=700, height=500)
+    # Display map in Streamlit – ADD returned_objects=[] and key
+    st_folium(m, width=700, height=500, returned_objects=[], key="route_map")
     
     # Optional: Distance estimate (using haversine formula)
     from math import radians, sin, cos, sqrt, atan2
