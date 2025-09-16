@@ -20,6 +20,11 @@ patients = {
 # ORS Client (uses secret API key)
 client = openrouteservice.Client(key=st.secrets["ORS_API_KEY"])
 
+def format_time(seconds):
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    return f"{hours}h {minutes}m" if hours else f"{minutes}m"
+
 st.title('🏥 Hospice Nurse Routing Prototype')
 st.markdown('Select a patient to auto-find the closest nurse and generate a driving route in Montana.')
 
@@ -29,8 +34,7 @@ selected_patient = st.selectbox('Select Patient', options=list(patients.keys()))
 # Generate route on button click
 if st.button('Find Closest Nurse and Generate Route'):
     patient_loc = patients[selected_patient]  # (lat, lon)
-    distances = {}
-    routes_dict = {}  # To store routes for each nurse if needed
+    results = []  # List for all nurses' data
     
     for nurse_name, nurse_loc in nurses.items():
         # ORS coords: ((start_lon, start_lat), (end_lon, end_lat))
@@ -38,32 +42,42 @@ if st.button('Find Closest Nurse and Generate Route'):
         
         try:
             routes = client.directions(coords, profile='driving-car')
-            dist = routes['routes'][0]['summary']['distance'] / 1000  # meters to km
-            distances[nurse_name] = dist
-            routes_dict[nurse_name] = routes  # Save for later use
+            summary = routes['routes'][0]['summary']
+            dist_meters = summary['distance']
+            duration_sec = summary['duration']
+            
+            dist_miles = dist_meters / 1609.34  # meters to miles
+            time_str = format_time(duration_sec)
+            
+            results.append({
+                'Nurse': nurse_name,
+                'Distance (miles)': round(dist_miles, 1),
+                'Drive Time': time_str,
+                'routes': routes  # Save for map if selected
+            })
         except Exception as e:
             st.error(f"Error calculating route for {nurse_name}: {str(e)}")
             continue
     
-    if distances:
-        # Find closest
-        closest_nurse = min(distances, key=distances.get)
-        closest_dist = distances[closest_nurse]
+    if results:
+        # Sort by distance
+        results_sorted = sorted(results, key=lambda x: x['Distance (miles)'])
         
-        # Get route details for closest
-        routes = routes_dict[closest_nurse]
+        # Closest for map
+        closest = results_sorted[0]
+        routes = closest['routes']
         geometry = routes['routes'][0]['geometry']
-        decoded = convert.decode_polyline(geometry)['coordinates']  # list of [lon, lat]
-        polyline_points = [[point[1], point[0]] for point in decoded]  # Swap to [lat, lon] for Folium
+        decoded = convert.decode_polyline(geometry)['coordinates']  # [lon, lat]
+        polyline_points = [[point[1], point[0]] for point in decoded]  # [lat, lon]
         
         # Create map
         m = folium.Map(location=[46.0, -110.0], zoom_start=6)
         
         # Add markers
-        nurse_loc = nurses[closest_nurse]
+        nurse_loc = nurses[closest['Nurse']]
         folium.Marker(
             nurse_loc, 
-            popup=f'{closest_nurse} (Starting Point)', 
+            popup=f"{closest['Nurse']} (Starting Point)", 
             tooltip='Nurse Location',
             icon=folium.Icon(color='green')
         ).add_to(m)
@@ -90,8 +104,13 @@ if st.button('Find Closest Nurse and Generate Route'):
         # Display map
         st_folium(m, width=700, height=500, returned_objects=[], key="route_map")
         
-        # Display info
-        st.metric(label="Closest Nurse", value=closest_nurse)
-        st.metric(label="Driving Distance", value=f"{closest_dist:.1f} km")
+        # Display closest info
+        st.metric(label="Closest Nurse", value=closest['Nurse'])
+        st.metric(label="Driving Distance", value=f"{closest['Distance (miles)']} miles")
+        st.metric(label="Estimated Drive Time", value=closest['Drive Time'])
+        
+        # Show ranked options table (all, since 3 total)
+        st.subheader("Ranked Nurse Options")
+        st.table(results_sorted)
     else:
         st.error("No routes could be calculated. Check API key or locations.")
